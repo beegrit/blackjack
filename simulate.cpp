@@ -5,12 +5,11 @@
 #include "simulate.h"
 #include <iostream>
 #include <cstdlib>
-#include <initializer_list>
 
 
 void simulate::makeDeck(int size) {
     char cards[13] = {'2','3','4','5','6','7','8','9','T','J','Q','K','A'};
-
+    deck = {};
     for (char card : cards) {
         for (int p = 0; p < 4 * size; p++) {
             deck.push_back(card);
@@ -19,7 +18,6 @@ void simulate::makeDeck(int size) {
 }
 
 char simulate::getCard() {
-    srand((unsigned) time(NULL));
     int randCardIndex = rand()%deck.size();
     char randCard = deck[randCardIndex];
     deck.erase(deck.begin()+randCardIndex);
@@ -59,27 +57,25 @@ std::vector<int> simulate::handSum(std::vector<char> hand) {
     }
     return std::vector<int> {sum,ace,dbl};
 }
-simulate::simulate() {
-    makeDeck(1);
-    bjRatio = 1.5;
-    playerHand = makeHand();
-    dealerHand = makeHand();
+simulate::simulate(double bjRat, int decks) {
+    bjRatio = bjRat;
+    deckCount = decks;
 }
-simulate::simulate(int decks) {
+
+void simulate::init(int decks, float bjRatio) {
     makeDeck(decks);
+    bjRatio = bjRatio;
     playerHand = makeHand();
     dealerHand = makeHand();
 }
 
-
-char simulate::bestChoice(std::vector<char> hand, char cDealerCard) {
+char simulate::bestChoice(std::vector<int> sums, char cDealerCard) {
     int dealerCard = cardToInt(cDealerCard);
-    std::vector<int> sums = handSum(hand);
     if (sums[0] >= 18 and sums[1] == 0) {
         return 'S';
     } else if (sums[0] == 17 and sums[1] == 0) {
         return 'S';
-    } else if (sums[0]<=16 and sums[0]>=13 and sums[1] == 0 and sums[2] == 0) {
+    } else if ((sums[0]<=16 and sums[0]>=13) and sums[1] == 0 and sums[2] == 0) {
         if (dealerCard > 6) {
             return 'H';
         } else {
@@ -162,11 +158,13 @@ char simulate::bestChoice(std::vector<char> hand, char cDealerCard) {
     } else if (sums[0] < 8) {
         return 'H';
     }
+    return 'S';
 }
 
 int simulate::playHand(int bet) {
     std::vector<std::vector<char>> playerHands {{playerHand}};
-    std::vector<int> handValues;
+    std::vector<std::vector<int>> handValues;
+    int betSum = 0;
     if (handSum(playerHand)[0] == 21) {
         if (handSum(dealerHand)[0] == 21) {
             return 0;
@@ -176,11 +174,67 @@ int simulate::playHand(int bet) {
     }
 
     while (playerHands.size() > 0) {
-        bestChoice(playerHands[0],dealerHand[0]);
+        std::vector<int> playerSum = handSum(playerHands[0]);
+        char choice = bestChoice(playerSum,dealerHand[0]);
+        if (choice == 'H') {
+            playerHands[0].push_back(getCard());
+        } else if (choice == 'S') {
+            handValues.push_back({playerSum[0],bet});
+            playerHands.erase(playerHands.begin()+0);
+        } else if (choice == 'D') {
+            playerHands[0].push_back(getCard());
+            playerSum = handSum(playerHands[0]);
+            handValues.push_back({playerSum[0],bet*2});
+            playerHands.erase(playerHands.begin()+0);
+        } else if (choice == 'T') {
+            playerHands.push_back({playerHands[0][1]});
+            playerHands[0].erase(playerHands[0].begin()+1);
+        }
+
     }
 
-    return 0;
+    for (int i = 0; i<handValues.size(); i++ ) {
+        if (handValues[i][0] > 21) {
+            betSum -= handValues[i][1];
+            handValues.erase(handValues.begin()+i);
+        }
+    }
+    std::vector<int> dealerSum = handSum(dealerHand);
+    while (dealerSum[0] < 17 or (dealerSum[0] == 17 and dealerSum[1] > 1)) {
+        dealerHand.push_back(getCard());
+        dealerSum = handSum(dealerHand);
+    }
+    if (dealerSum[0] > 21) {
+        for (int i = 0; i < handValues.size(); i++) {
+            betSum += handValues[i][1];
+            return betSum;
+        }
+    }
+    for (int i = 0; i<handValues.size(); i++ ) {
+        if (handValues[i][0] > dealerSum[0]) {
+            betSum += handValues[i][1];
+        } else if (handValues[i][0] < dealerSum[0]) {
+            betSum -= handValues[i][1];
+        }
+    }
+
+    std::cout << "ran" << std::endl;
+    return betSum;
 }
+
+void simulate::runIt(int hands, int startCash, int bet) {
+    srand(time(NULL));
+    cash = startCash;
+    for (int i = 0; i < hands; i++) {
+        init(deckCount, bjRatio);
+        cash += playHand(bet);
+        std::cout << deck.size() << std::endl;
+    }
+    std::cout << "Player has $" << cash << " left" << std::endl;
+
+}
+
+
 
 
 
